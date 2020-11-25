@@ -1,0 +1,22 @@
+# vscode
+.vscode
+__pycache__
+
+# jupyter notebook
+.ipynb_checkpoints
+
+# test code
+test_*
+
+# weights file
+*.pth
+
+# paper
+*.ppt
+*.pdf
+*.docx
+*.tmp
+
+# temp file
+temp/
+*.cfg
