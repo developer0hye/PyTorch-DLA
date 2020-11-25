@@ -10,6 +10,10 @@ test_*
 
 # weights file
 *.pth
+*.onnx
+
+#weights folder
+weights/
 
 # paper
 *.ppt
