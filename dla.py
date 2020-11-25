@@ -28,16 +28,12 @@ def conv_bn(in_channels, out_channels, kernel_size=3, stride=1):
             nn.BatchNorm2d(out_channels))
     
 class Aggregation(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size):
+    def __init__(self, in_channels, out_channels):
         super(Aggregation, self).__init__()
         self.aggregation = conv_bn_relu(in_channels, out_channels, kernel_size=1)
     def forward(self, x):
         x = torch.cat(x, dim=1)
         return self.aggregation(x)
-
-# model = DLA([1, 1, 1, 2, 2, 1], [16, 32, 64, 128, 256, 512],
-#                 block=BasicBlock,
-#                 **kwargs)
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -52,25 +48,61 @@ class BasicBlock(nn.Module):
         self.conv1 = conv_bn_relu(in_channels, out_channels, stride=stride)
         self.conv2 = conv_bn(out_channels, out_channels)
         
-    def forward(self, x):        
+    def forward(self, x):
         return torch.relu(self.shortcut(x) + self.conv2(self.conv1(x)))
 
-class HDAInit(nn.Module):
+class HDAHead(nn.Module):
     def __init__(self,
                  in_channels,
                  out_channels,
                  block):
-        super(HDAInit, self).__init__()
+        super(HDAHead, self).__init__()
         
         self.block1 = block(in_channels, out_channels, stride=2)
         self.block2 = block(out_channels, out_channels)
-        self.aggregation = Aggregation(out_channels * 2, out_channels, kernel_size=1)
+        self.aggregation = Aggregation(out_channels * 2, out_channels)
         
     def forward(self, x):
-        x = self.block1(x)
-        x = self.aggregation([x, self.block2(x)])
+        x1 = self.block1(x)
+        x2 = self.block2(x1)
+        x = self.aggregation([x1, x2])
         return x
+
+class HDATail(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 block):
+        super(HDATail, self).__init__()
         
+        self.downsample = nn.MaxPool2d(2)
+        self.block1 = block(in_channels, out_channels, stride=2)
+        self.block2 = block(out_channels, out_channels)
+        self.aggregation = Aggregation(in_channels + out_channels * 2, out_channels)
+        
+    def forward(self, x):
+        x1 = self.block1(x)
+        x2 = self.block2(x1)
+        x = self.aggregation([self.downsample(x), x1, x2])
+        return x
+
+class HDABody(nn.Module):       
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 depth,
+                 block):
+        super(HDABody, self).__init__()
+        
+        self.downsample = nn.MaxPool2d(2)
+        self.tree = nn.Identity()
+        self.aggregation = Aggregation(in_channels + out_channels * depth, out_channels)
+        
+    def forward(self, x):
+        x_downsampled = self.downsample(x) # ch: in_channels
+        x = self.tree(x) # x is list that has N(=self.depth) items. ch: out_channels * depth
+        x = self.aggregation([x_downsampled, x])
+        return x
 
 class DLA(nn.Module):
     def __init__(self,
@@ -96,12 +128,15 @@ class DLA(nn.Module):
         self.stage2 = conv_bn_relu(channels[0], channels[1], stride=2)
         
         #For all other stages, we make use of combined IDA and HDA on the backbone blocks and stages.
-        #To simplfy the code, I constraint the depth of stage3 to 1.
-        self.stage3 = HDAInit(channels[1], channels[2], block)
         
-        self.stage4 = nn.Identity()
-        self.stage5 = nn.Identity()
-        self.stage6 = nn.Identity()
+        #To simplfy the code, I constraint the depth of stage3 to 1.
+        self.stage3 = HDAHead(channels[1], channels[2], block)
+        
+        self.stage4 = HDATail(channels[2], channels[3], block)
+        self.stage5 = HDATail(channels[3], channels[4], block)
+        
+        #To simplfy the code, I constraint the depth of stage6 to 1.
+        self.stage6 = HDATail(channels[4], channels[5], block)
        
         self.stages = nn.ModuleList([self.stage1, self.stage2, self.stage3, self.stage4, self.stage5, self.stage6])
         
