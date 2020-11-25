@@ -95,11 +95,13 @@ class HDABody(nn.Module):
         super(HDABody, self).__init__()
         
         self.downsample = nn.MaxPool2d(2)
+        self.block = block(in_channels, out_channels, stride=2)
         self.tree = nn.Identity()
         self.aggregation = Aggregation(in_channels + out_channels * depth, out_channels)
         
     def forward(self, x):
         x_downsampled = self.downsample(x) # ch: in_channels
+        x = self.block(x)
         x = self.tree(x) # x is list that has N(=self.depth) items. ch: out_channels * depth
         x = self.aggregation([x_downsampled, x])
         return x
@@ -132,8 +134,8 @@ class DLA(nn.Module):
         #To simplfy the code, I constraint the depth of stage3 to 1.
         self.stage3 = HDAHead(channels[1], channels[2], block)
         
-        self.stage4 = HDATail(channels[2], channels[3], block)
-        self.stage5 = HDATail(channels[3], channels[4], block)
+        self.stage4 = HDABody(channels[2], channels[3], levels[3], block)
+        self.stage5 = HDABody(channels[3], channels[4], levels[4], block)
         
         #To simplfy the code, I constraint the depth of stage6 to 1.
         self.stage6 = HDATail(channels[4], channels[5], block)
