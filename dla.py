@@ -132,7 +132,6 @@ class DLA(nn.Module):
 		
 		#For all other stages, we make use of combined IDA and HDA on the backbone blocks and stages.
 		
-		#To simplfy the code, I constraint the depth of stage3 to 1.
 		self.stage3 = HDATree(depth=stages_depth[2], 
 							  aggregate_root=False, 
 							  root_channels=0, 
